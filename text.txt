@@ -1,0 +1,4 @@
+- `make up`（または `docker compose up -d`）で Laravel アプリ + Postgres + Redis + Mailhog + Nginx が起動すること
+- `php artisan migrate --seed` が実行でき、メール送信は Mailhog で確認できること
+- ホスト（Ubuntu想定）に最低限のハードニング（SSH鍵認証・ufw・fail2ban）がされていること
+- Docker イメージは非 root ユーザーで動く・CI 用にスキャン可能であること

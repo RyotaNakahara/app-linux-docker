@@ -1,0 +1,53 @@
+# EditorConfig は、エディタ間でコーディングスタイルを統一するための設定ファイルです
+# https://editorconfig.org
+
+# トップレベルのEditorConfig設定ファイルであることを示す
+root = true
+
+# すべてのファイルに適用されるデフォルト設定
+[*]
+charset = utf-8                    # 文字コード
+end_of_line = lf                   # 改行コード（Linux/Mac形式）
+insert_final_newline = true        # ファイル末尾に改行を挿入
+trim_trailing_whitespace = true    # 行末の空白を削除
+indent_style = space               # インデントにスペースを使用
+indent_size = 4                    # インデントサイズ（4スペース）
+
+# Markdown ファイル（行末スペースが意味を持つ場合があるため）
+[*.md]
+trim_trailing_whitespace = false
+
+# YAML ファイル（Docker Compose等）
+[*.{yml,yaml}]
+indent_size = 2                    # YAMLは2スペースが一般的
+
+# JSON ファイル
+[*.json]
+indent_size = 2
+
+# Makefile（タブ文字が必須）
+[Makefile]
+indent_style = tab
+
+# PHP ファイル（PSR-2/PSR-12準拠）
+[*.php]
+indent_size = 4
+
+# JavaScript/TypeScript
+[*.{js,ts,jsx,tsx}]
+indent_size = 2
+
+# Blade テンプレート
+[*.blade.php]
+indent_size = 2
+
+# Nginx 設定ファイル
+[*.conf]
+indent_size = 4
+
+# Shell スクリプト
+[*.sh]
+indent_size = 4
+end_of_line = lf                   # シェルスクリプトは必ずLF
+
+
