@@ -152,20 +152,43 @@ scan: ## Scan Docker images for vulnerabilities (requires Trivy)
 init: ## Initialize Laravel application (first time setup)
 	@echo "$(GREEN)Initializing Laravel application...$(NC)"
 	@if [ ! -f .env ]; then \
-		cp .env.example .env; \
-		echo "$(GREEN)Created .env file$(NC)"; \
+		if [ -f .env.template ]; then \
+			cp .env.template .env; \
+			echo "$(GREEN)Created .env file from .env.template$(NC)"; \
+		elif [ -f .env.example ]; then \
+			cp .env.example .env; \
+			echo "$(GREEN)Created .env file from .env.example$(NC)"; \
+		else \
+			echo "$(RED)Error: .env.template or .env.example not found$(NC)"; \
+			exit 1; \
+		fi \
+	else \
+		echo "$(YELLOW).env file already exists$(NC)"; \
 	fi
+	@echo "$(GREEN)Building containers...$(NC)"
+	docker compose build
+	@echo "$(GREEN)Starting containers...$(NC)"
 	docker compose up -d
 	@echo "$(YELLOW)Waiting for database to be ready...$(NC)"
-	@sleep 5
-	docker compose exec app composer install --no-interaction --prefer-dist --optimize-autoloader
-	docker compose exec app php artisan key:generate
-	docker compose exec app php artisan migrate --seed --force
-	@echo "$(GREEN)Initialization complete!$(NC)"
+	@sleep 10
+	@echo "$(GREEN)Installing Composer dependencies...$(NC)"
+	docker compose exec -T app composer install --no-interaction --prefer-dist --optimize-autoloader
+	@echo "$(GREEN)Generating application key...$(NC)"
+	docker compose exec -T app php artisan key:generate --force
+	@echo "$(GREEN)Running migrations and seeders...$(NC)"
+	docker compose exec -T app php artisan migrate --seed --force
+	@echo "$(GREEN)Setting permissions...$(NC)"
+	docker compose exec -T -u root app chmod -R 775 storage bootstrap/cache
+	docker compose exec -T -u root app chown -R laravel:laravel storage bootstrap/cache
 	@echo ""
-	@echo "$(GREEN)Application is ready!$(NC)"
+	@echo "$(GREEN)==================================="
+	@echo "Initialization complete!"
+	@echo "===================================$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Access your application:$(NC)"
 	@echo "App: http://localhost:${APP_PORT:-80}"
 	@echo "Mailhog: http://localhost:${MAILHOG_WEB_PORT:-8025}"
+	@echo "Health Check: http://localhost:${APP_PORT:-80}/health"
 
 status: ## Show application status
 	@echo "$(GREEN)Application Status$(NC)"

@@ -44,8 +44,10 @@ WORKDIR /var/www/html
 # Copy composer files first (for better layer caching)
 COPY composer.json composer.lock* ./
 
-# Install PHP dependencies (if composer.lock exists)
-RUN if [ -f composer.lock ]; then \
+# Install PHP dependencies
+# Create vendor directory even if composer install is skipped
+RUN mkdir -p vendor && \
+    if [ -f composer.lock ]; then \
         composer install --no-dev --no-scripts --no-autoloader --prefer-dist; \
     fi
 
@@ -58,7 +60,9 @@ RUN apk add --no-cache \
     libpng \
     libzip \
     postgresql-libs \
-    bash
+    bash \
+    fcgi \
+    netcat-openbsd
 
 # Install PHP extensions (same as builder)
 RUN apk add --no-cache postgresql-dev libpng-dev libzip-dev oniguruma-dev \
@@ -90,11 +94,11 @@ RUN addgroup -g 1000 laravel && \
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy vendor from builder
-COPY --from=builder --chown=laravel:laravel /var/www/html/vendor ./vendor
-
-# Copy application files
+# Copy application files first
 COPY --chown=laravel:laravel . .
+
+# Copy vendor from builder (if exists)
+COPY --from=builder --chown=laravel:laravel /var/www/html/vendor ./vendor
 
 # Create necessary directories with proper permissions
 RUN mkdir -p \
