@@ -1,3 +1,18 @@
+{{--
+    Mailhog テストメールテンプレート
+
+    このテンプレートは Mailhog を使用したメール送信テストで使用されます。
+
+    【使用方法】
+    1. http://localhost/send-test-email にアクセス
+    2. このテンプレートを使用したメールが生成される
+    3. Mailhog（http://localhost:8025）でメールを確認
+
+    【表示内容】
+    - メール送信成功メッセージ
+    - 環境情報（Laravel バージョン、PHP バージョン、送信日時）
+    - Mailhog へのリンク
+--}}
 <!DOCTYPE html>
 <html lang="ja">
 <head>

@@ -119,15 +119,25 @@
                 <h3>⚡ Redis</h3>
                 <p>✅ Connected</p>
             </div>
+            {{-- Mailhog のステータス表示 --}}
+            {{-- Mailhog はメール送信のテスト用ツールで、ポート8025でWeb UIを提供 --}}
             <div class="status-card">
                 <h3>📧 Mailhog</h3>
                 <p>✅ Ready</p>
             </div>
         </div>
 
+        {{-- アクションリンク --}}
         <div class="links">
+            {{-- テストメール送信ボタン --}}
+            {{-- /send-test-email にアクセスして、Mailhog でメールをキャプチャ --}}
             <a href="/send-test-email" class="link-button">📧 テストメール送信</a>
+
+            {{-- Mailhog Web UI へのリンク --}}
+            {{-- ポート8025で送信されたメールを確認できる --}}
             <a href="http://localhost:8025" target="_blank" class="link-button">📬 Mailhog を開く</a>
+
+            {{-- ヘルスチェックエンドポイント --}}
             <a href="/health" class="link-button">🏥 ヘルスチェック</a>
         </div>
 
