@@ -17,3 +17,19 @@ yarn-error.log
 /.fleet
 /.idea
 /.vscode
+
+# Logs
+/storage/logs/*.log
+
+# Temporary files
+temp-*.ps1
+*.tmp
+
+# Documentation files (except README.md)
+SETUP_CUSTOM_DOMAIN.md
+INSTALL.md
+QUICK_START.md
+README_SETUP.md
+SETUP_INSTRUCTIONS.md
+WINDOWS_COMMANDS.md
+/docs/*.md

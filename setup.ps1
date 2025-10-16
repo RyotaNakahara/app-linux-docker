@@ -36,7 +36,39 @@ if (-not (Test-Path .env)) {
         Copy-Item .env.example .env
         Write-Host "✓ .env ファイルを作成しました" -ForegroundColor Green
     } else {
-        Write-Host "⚠ .env.example が見つかりません" -ForegroundColor Yellow
+        Write-Host ".env.example が見つかりません。デフォルトの .env を作成します..." -ForegroundColor Yellow
+        @"
+APP_NAME=Laravel
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_TIMEZONE=UTC
+APP_URL=http://laravel-app.test
+
+DB_CONNECTION=pgsql
+DB_HOST=postgres
+DB_PORT=5432
+DB_DATABASE=laravel
+DB_USERNAME=laravel
+DB_PASSWORD=secret
+
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_PASSWORD=null
+
+SESSION_DRIVER=redis
+CACHE_STORE=redis
+
+MAIL_MAILER=smtp
+MAIL_HOST=mailhog
+MAIL_PORT=1025
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+MAIL_FROM_ADDRESS=hello@example.com
+MAIL_FROM_NAME=Laravel
+"@ | Out-File -FilePath .env -Encoding UTF8
+        Write-Host "✓ デフォルトの .env ファイルを作成しました" -ForegroundColor Green
     }
 } else {
     Write-Host "⚠ .env ファイルは既に存在します" -ForegroundColor Yellow
@@ -93,11 +125,17 @@ Write-Host "===================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "アプリケーションにアクセス:" -ForegroundColor Yellow
 Write-Host "  → アプリ: " -NoNewline
-Write-Host "http://localhost" -ForegroundColor Green
+Write-Host "http://localhost または http://laravel-app.test" -ForegroundColor Green
 Write-Host "  → Mailhog: " -NoNewline
 Write-Host "http://localhost:8025" -ForegroundColor Green
 Write-Host "  → ヘルスチェック: " -NoNewline
 Write-Host "http://localhost/health" -ForegroundColor Green
+Write-Host ""
+Write-Host "カスタムドメインを使用する場合:" -ForegroundColor Yellow
+Write-Host "  1. hostsファイルに以下を追加してください:" -ForegroundColor White
+Write-Host "     C:\Windows\System32\drivers\etc\hosts" -ForegroundColor Gray
+Write-Host "     127.0.0.1    laravel-app.test" -ForegroundColor Gray
+Write-Host "  2. その後、http://laravel-app.test でアクセスできます" -ForegroundColor White
 Write-Host ""
 Write-Host "便利なコマンド:" -ForegroundColor Yellow
 Write-Host "  make logs        - ログを表示"

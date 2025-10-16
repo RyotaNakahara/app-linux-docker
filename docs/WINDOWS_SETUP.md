@@ -131,7 +131,7 @@ wsl --install -d Ubuntu-22.04
 wsl
 
 # プロジェクトディレクトリに移動
-cd /mnt/c/Users/hobby/ドキュメント/Project/app-linux-docker
+cd /mnt/c/path/to/app-linux-docker
 
 # または WSL内にクローン（推奨）
 cd ~
@@ -158,7 +158,7 @@ Git Bash は Windows 上で Unix風のシェルを提供します。
 
 ```bash
 # Git Bash を起動
-cd /c/Users/hobby/ドキュメント/Project/app-linux-docker
+cd /c/path/to/app-linux-docker
 
 # Makefile のコマンドが使用可能
 make help
@@ -170,7 +170,7 @@ PowerShell から直接 Docker を操作することも可能です。
 
 ```powershell
 # プロジェクトディレクトリに移動
-cd C:\Users\hobby\ドキュメント\Project\app-linux-docker
+cd C:\path\to\app-linux-docker
 
 # Docker Compose を使用
 docker compose up -d

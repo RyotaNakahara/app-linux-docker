@@ -114,6 +114,10 @@ RUN mkdir -p \
 COPY docker/php/php.ini /usr/local/etc/php/conf.d/laravel.ini
 COPY docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
 
+# Copy health check script and make it executable
+COPY docker/php/php-fpm-healthcheck /usr/local/bin/php-fpm-healthcheck
+RUN chmod +x /usr/local/bin/php-fpm-healthcheck
+
 # Switch to non-root user
 USER laravel
 
@@ -126,4 +130,3 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 
 # Start PHP-FPM
 CMD ["php-fpm"]
-

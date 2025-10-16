@@ -3,9 +3,6 @@
 # Laravel + PostgreSQL + Redis + Mailhog + Nginx
 # =============================================
 
-# Docker Compose のバージョン指定（v3.9は現在の安定版）
-version: '3.9'
-
 # サービス定義: 各コンテナの設定
 services:
 
@@ -33,19 +30,24 @@ services:
       # ホストのカレントディレクトリをコンテナの/var/www/htmlにマウント
       # これによりコード変更がリアルタイムで反映される
       - ./:/var/www/html
-      
+
       # PHP設定ファイルをコンテナ内の設定ディレクトリにマウント
       - ./docker/php/php.ini:/usr/local/etc/php/conf.d/laravel.ini
 
     # 環境変数: コンテナ内で使用される変数
     # ${変数名:-デフォルト値} の形式で.envファイルから読み込み
     environment:
+      # アプリケーション基本設定
+      - APP_NAME=${APP_NAME:-Laravel}
+      - APP_URL=${APP_URL:-http://laravel-app.test}
+      - APP_KEY=${APP_KEY:-}
+
       # アプリケーション環境（local/production等）
-      - APP_ENV=${APP_ENV:-production}
-      
+      - APP_ENV=${APP_ENV:-local}
+
       # デバッグモード（trueにすると詳細エラーが表示される）
-      - APP_DEBUG=${APP_DEBUG:-false}
-      
+      - APP_DEBUG=${APP_DEBUG:-true}
+
       # データベース接続設定
       - DB_CONNECTION=pgsql           # PostgreSQLを使用
       - DB_HOST=postgres              # サービス名（Docker内部DNS）
@@ -53,11 +55,11 @@ services:
       - DB_DATABASE=${DB_DATABASE:-laravel}
       - DB_USERNAME=${DB_USERNAME:-laravel}
       - DB_PASSWORD=${DB_PASSWORD:-secret}
-      
+
       # Redis接続設定（キャッシュ・セッション用）
       - REDIS_HOST=redis              # サービス名
       - REDIS_PORT=6379               # Redisのデフォルトポート
-      
+
       # メール設定（Mailhog使用）
       - MAIL_MAILER=smtp              # SMTP方式
       - MAIL_HOST=mailhog             # サービス名
@@ -131,8 +133,8 @@ services:
 
     # ヘルスチェック: コンテナが正常に動作しているか定期的に確認
     healthcheck:
-      # /healthエンドポイントにアクセスして確認
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      # /healthエンドポイントにアクセスして確認（IPv4アドレスを明示的に指定）
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 30s                   # 30秒ごとにチェック
       timeout: 3s                     # 3秒以内に応答がなければ失敗
       retries: 3                      # 3回連続で失敗したら異常と判断
@@ -191,9 +193,9 @@ services:
     restart: unless-stopped
 
     # Redisサーバーの起動コマンド
-    # --requirepass = パスワード設定（null=パスワードなし）
     # --appendonly yes = AOF永続化を有効化（データが失われにくい）
-    command: redis-server --requirepass ${REDIS_PASSWORD:-null} --appendonly yes
+    # パスワードなしで起動（開発環境用）
+    command: redis-server --appendonly yes
 
     volumes:
       # Redisのデータを永続化
@@ -232,7 +234,7 @@ services:
     ports:
       # SMTPポート: アプリケーションからのメール送信を受け取る
       - "${MAILHOG_SMTP_PORT:-1025}:1025"
-      
+
       # Web UIポート: ブラウザで http://localhost:8025 にアクセスして
       # 送信されたメールを確認できる
       - "${MAILHOG_WEB_PORT:-8025}:8025"
@@ -267,3 +269,4 @@ volumes:
   # Redisのデータを保存
   redis_data:
     driver: local
+
