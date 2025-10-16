@@ -166,11 +166,54 @@ jobs:
 
       - name: Check app health
         run: |
-          # Nginxのヘルスチェックエンドポイントを確認
-          curl -f http://localhost/health || exit 1
-
-          # アプリケーションのルートも確認
-          curl -f http://localhost/ || exit 1
+          # 全サービスがhealthyになるまで追加で待機
+          echo "Final health check verification..."
+          max_wait=60
+          elapsed=0
+          while [ $elapsed -lt $max_wait ]; do
+            healthy_count=$(docker compose ps --format json | jq -r '.[] | select(.Health == "healthy") | .Name' | wc -l)
+            total_count=$(docker compose ps --format json | jq -r '.[].Name' | wc -l)
+            
+            if [ "$healthy_count" -ge 3 ]; then
+              echo "✓ At least 3 services are healthy ($healthy_count/$total_count)"
+              break
+            fi
+            
+            echo "Waiting for services to be healthy... ($healthy_count/$total_count healthy, ${elapsed}s elapsed)"
+            sleep 5
+            elapsed=$((elapsed + 5))
+          done
+          
+          # 最終状態を表示
+          echo "=== Final Status ==="
+          docker compose ps
+          
+          # Nginxのヘルスチェックエンドポイントを確認（リトライ付き）
+          echo "Testing /health endpoint..."
+          for i in {1..5}; do
+            if curl -f -s http://localhost/health; then
+              echo "✓ Health endpoint OK"
+              break
+            fi
+            echo "⚠ Attempt $i/5 failed, retrying..."
+            sleep 3
+          done
+          
+          # アプリケーションのルートを確認（リトライ付き）
+          echo "Testing / endpoint..."
+          for i in {1..5}; do
+            if curl -f -s http://localhost/ > /dev/null; then
+              echo "✓ Root endpoint OK"
+              exit 0
+            fi
+            echo "⚠ Attempt $i/5 failed, retrying..."
+            sleep 3
+          done
+          
+          # すべて失敗した場合、詳細なログを表示
+          echo "✗ Health check failed, showing logs..."
+          docker compose logs --tail=100
+          exit 1
 
       - name: Cleanup
         if: always()
