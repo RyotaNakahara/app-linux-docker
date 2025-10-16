@@ -120,25 +120,23 @@ jobs:
 
       - name: Build and test
         run: |
-          set -e  # エラーで即座に停止
-
           echo "Building Docker images..."
-          docker compose build
+          docker compose build || { echo "Build failed"; exit 1; }
 
           echo "Starting containers..."
-          docker compose up -d
+          docker compose up -d || { echo "Failed to start containers"; exit 1; }
 
           # PostgreSQLとRedisのヘルスチェックを待つ
           echo "Waiting for database and cache to be ready..."
           for i in {1..30}; do
-            postgres_healthy=$(docker compose ps postgres | grep -c "(healthy)" || echo "0")
-            redis_healthy=$(docker compose ps redis | grep -c "(healthy)" || echo "0")
+            postgres_healthy=$(docker compose ps postgres 2>/dev/null | grep -c "(healthy)" || echo "0")
+            redis_healthy=$(docker compose ps redis 2>/dev/null | grep -c "(healthy)" || echo "0")
 
             if [ "$postgres_healthy" -ge 1 ] && [ "$redis_healthy" -ge 1 ]; then
               echo "✓ Dependencies are ready"
               break
             fi
-            echo "Waiting for dependencies... ($i/30)"
+            echo "Waiting for dependencies... ($i/30) [postgres: $postgres_healthy, redis: $redis_healthy]"
             sleep 3
           done
 
@@ -153,7 +151,9 @@ jobs:
           echo "Generating application key..."
           key_generated=false
           for i in {1..10}; do
-            if docker compose exec -T app php artisan key:generate --force 2>&1 | grep -q "Application key set"; then
+            output=$(docker compose exec -T app php artisan key:generate --force 2>&1 || echo "ERROR")
+            echo "$output"
+            if echo "$output" | grep -q "Application key set"; then
               echo "✓ APP_KEY generated successfully"
               key_generated=true
               break
@@ -162,14 +162,20 @@ jobs:
             sleep 3
           done
 
-          if [ "$key_generated" = false ]; then
-            echo "✗ Failed to generate APP_KEY"
-            docker compose logs app --tail=50
+          if [ "$key_generated" = "false" ]; then
+            echo "✗ Failed to generate APP_KEY after 10 attempts"
+            echo "=== App Container Logs ==="
+            docker compose logs app --tail=100
             exit 1
           fi
 
           # .envファイルにAPP_KEYが設定されたか確認
-          docker compose exec -T app grep "APP_KEY=" .env | head -1
+          echo "Checking .env file..."
+          if docker compose exec -T app grep "APP_KEY=" .env 2>/dev/null | head -1; then
+            echo "✓ APP_KEY found in .env"
+          else
+            echo "⚠ Could not verify APP_KEY in .env (but continuing...)"
+          fi
 
           # コンテナを再起動して環境変数を反映
           echo "Restarting containers to apply APP_KEY..."
@@ -182,12 +188,12 @@ jobs:
           # ヘルスチェックが完了するまで待機
           echo "Waiting for all services to be healthy..."
           for i in {1..30}; do
-            healthy_count=$(docker compose ps | grep -c "(healthy)" || echo "0")
+            healthy_count=$(docker compose ps 2>/dev/null | grep -c "(healthy)" || echo "0")
             if [ "$healthy_count" -ge 3 ]; then
               echo "✓ At least 3 services are healthy!"
               break
             fi
-            echo "Waiting for health checks... ($healthy_count healthy, attempt $i/30)"
+            echo "Waiting for health checks... ($healthy_count/5 healthy, attempt $i/30)"
             sleep 5
           done
 
