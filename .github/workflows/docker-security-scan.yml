@@ -123,26 +123,46 @@ jobs:
           docker compose build
           docker compose up -d
 
-          # APP_KEYを生成
+          # 依存コンテナの起動を待つ
+          echo "Waiting for dependencies to be ready..."
+          sleep 30
+
+          # コンテナの状態を確認
+          echo "=== Container Status ==="
+          docker compose ps
+
+          # APP_KEYを生成（リトライ機能付き）
           echo "Generating application key..."
-          docker compose exec -T app php artisan key:generate --force
+          for i in {1..5}; do
+            if docker compose exec -T app php artisan key:generate --force 2>/dev/null; then
+              echo "✓ APP_KEY generated successfully"
+              break
+            fi
+            echo "⚠ Attempt $i/5 failed, retrying in 5s..."
+            sleep 5
+          done
 
           # コンテナを再起動して環境変数を反映
+          echo "Restarting containers to apply APP_KEY..."
           docker compose restart app nginx
+          sleep 15
 
-          # ヘルスチェックが完了するまで待機（最大120秒）
+          # ヘルスチェックが完了するまで待機
           echo "Waiting for services to be healthy..."
           for i in {1..24}; do
             if docker compose ps | grep -q "(healthy)"; then
-              echo "Services are healthy!"
+              echo "✓ All services are healthy!"
               break
             fi
             echo "Waiting... ($i/24)"
             sleep 5
           done
 
+          # 最終状態を表示
+          echo "=== Final Container Status ==="
           docker compose ps
-          docker compose logs
+          echo "=== Recent Logs ==="
+          docker compose logs --tail=50
 
       - name: Check app health
         run: |
