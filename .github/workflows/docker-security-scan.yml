@@ -120,12 +120,30 @@ jobs:
 
       - name: Build and test
         run: |
+          set -e  # エラーで即座に停止
+
+          echo "Building Docker images..."
           docker compose build
+
+          echo "Starting containers..."
           docker compose up -d
 
-          # 依存コンテナの起動を待つ
-          echo "Waiting for dependencies to be ready..."
-          sleep 30
+          # PostgreSQLとRedisのヘルスチェックを待つ
+          echo "Waiting for database and cache to be ready..."
+          for i in {1..30}; do
+            postgres_healthy=$(docker compose ps postgres | grep -c "(healthy)" || echo "0")
+            redis_healthy=$(docker compose ps redis | grep -c "(healthy)" || echo "0")
+
+            if [ "$postgres_healthy" -ge 1 ] && [ "$redis_healthy" -ge 1 ]; then
+              echo "✓ Dependencies are ready"
+              break
+            fi
+            echo "Waiting for dependencies... ($i/30)"
+            sleep 3
+          done
+
+          # 追加で10秒待機
+          sleep 10
 
           # コンテナの状態を確認
           echo "=== Container Status ==="
@@ -133,28 +151,43 @@ jobs:
 
           # APP_KEYを生成（リトライ機能付き）
           echo "Generating application key..."
-          for i in {1..5}; do
-            if docker compose exec -T app php artisan key:generate --force 2>/dev/null; then
+          key_generated=false
+          for i in {1..10}; do
+            if docker compose exec -T app php artisan key:generate --force 2>&1 | grep -q "Application key set"; then
               echo "✓ APP_KEY generated successfully"
+              key_generated=true
               break
             fi
-            echo "⚠ Attempt $i/5 failed, retrying in 5s..."
-            sleep 5
+            echo "⚠ Attempt $i/10 failed, retrying in 3s..."
+            sleep 3
           done
+
+          if [ "$key_generated" = false ]; then
+            echo "✗ Failed to generate APP_KEY"
+            docker compose logs app --tail=50
+            exit 1
+          fi
+
+          # .envファイルにAPP_KEYが設定されたか確認
+          docker compose exec -T app grep "APP_KEY=" .env | head -1
 
           # コンテナを再起動して環境変数を反映
           echo "Restarting containers to apply APP_KEY..."
           docker compose restart app nginx
-          sleep 15
+
+          # 再起動後、十分に待機
+          echo "Waiting for containers to restart..."
+          sleep 20
 
           # ヘルスチェックが完了するまで待機
-          echo "Waiting for services to be healthy..."
-          for i in {1..24}; do
-            if docker compose ps | grep -q "(healthy)"; then
-              echo "✓ All services are healthy!"
+          echo "Waiting for all services to be healthy..."
+          for i in {1..30}; do
+            healthy_count=$(docker compose ps | grep -c "(healthy)" || echo "0")
+            if [ "$healthy_count" -ge 3 ]; then
+              echo "✓ At least 3 services are healthy!"
               break
             fi
-            echo "Waiting... ($i/24)"
+            echo "Waiting for health checks... ($healthy_count healthy, attempt $i/30)"
             sleep 5
           done
 
@@ -162,67 +195,67 @@ jobs:
           echo "=== Final Container Status ==="
           docker compose ps
           echo "=== Recent Logs ==="
-          docker compose logs --tail=50
+          docker compose logs --tail=30
 
       - name: Check app health
         run: |
-          # 全サービスがhealthyになるまで追加で待機
-          echo "Final health check verification..."
-          max_wait=60
-          elapsed=0
-          while [ $elapsed -lt $max_wait ]; do
-            # healthyサービスをカウント（jqなし）
-            healthy_count=$(docker compose ps | grep -c "(healthy)" || echo "0")
+          set -e  # エラーで即座に停止（最後のexitまで）
 
-            if [ "$healthy_count" -ge 3 ]; then
-              echo "✓ At least 3 services are healthy ($healthy_count services)"
-              break
-            fi
-
-            echo "Waiting for services to be healthy... ($healthy_count healthy, ${elapsed}s elapsed)"
-            sleep 5
-            elapsed=$((elapsed + 5))
-          done
-
-          # 最終状態を表示
-          echo "=== Final Status ==="
+          echo "=== Final Container Status Before Health Check ==="
           docker compose ps
 
-          # さらに5秒待機してから確認
-          echo "Waiting additional 5 seconds before testing..."
-          sleep 5
+          # 追加で10秒待機
+          echo "Waiting 10 seconds before health checks..."
+          sleep 10
 
           # Nginxのヘルスチェックエンドポイントを確認（リトライ付き）
           echo "Testing /health endpoint..."
           health_success=false
-          for i in {1..5}; do
-            if curl -f -s http://localhost/health; then
+          for i in {1..10}; do
+            response=$(curl -s -o /tmp/health.txt -w "%{http_code}" http://localhost/health 2>&1 || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✓ Health endpoint OK (HTTP $response)"
+              cat /tmp/health.txt 2>/dev/null || true
               echo ""
-              echo "✓ Health endpoint OK"
               health_success=true
               break
             fi
-            echo "⚠ Attempt $i/5 failed, retrying in 3s..."
-            sleep 3
+            echo "⚠ Attempt $i/10: HTTP $response, retrying in 5s..."
+            sleep 5
           done
 
           # アプリケーションのルートを確認（リトライ付き）
           echo "Testing / endpoint..."
           root_success=false
-          for i in {1..5}; do
-            status_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/)
-            if [ "$status_code" = "200" ]; then
-              echo "✓ Root endpoint OK (HTTP $status_code)"
+          for i in {1..10}; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/ 2>&1 || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✓ Root endpoint OK (HTTP $response)"
               root_success=true
               break
             fi
-            echo "⚠ Attempt $i/5 failed (HTTP $status_code), retrying in 3s..."
-            sleep 3
+            echo "⚠ Attempt $i/10: HTTP $response, retrying in 5s..."
+
+            # デバッグ: エラー詳細を表示
+            if [ $i -eq 5 ]; then
+              echo "=== Debug: Container Status at attempt 5 ==="
+              docker compose ps
+              echo "=== Debug: Nginx Error Log ==="
+              docker compose logs nginx --tail=20
+              echo "=== Debug: App Error Log ==="
+              docker compose logs app --tail=20
+            fi
+
+            sleep 5
           done
 
           # 結果を確認
-          if [ "$health_success" = true ] && [ "$root_success" = true ]; then
-            echo ""
+          echo ""
+          echo "=== Health Check Results ==="
+          echo "Health endpoint: $health_success"
+          echo "Root endpoint: $root_success"
+
+          if [ "$health_success" = "true" ] && [ "$root_success" = "true" ]; then
             echo "✓ All health checks passed!"
             exit 0
           fi
@@ -230,12 +263,16 @@ jobs:
           # 失敗した場合、詳細なログを表示
           echo ""
           echo "✗ Health check failed"
-          echo "=== Container Status ==="
+          echo "=== Final Container Status ==="
           docker compose ps
-          echo "=== Nginx Logs ==="
-          docker compose logs nginx --tail=50
-          echo "=== App Logs ==="
-          docker compose logs app --tail=50
+          echo "=== Nginx Logs (last 100 lines) ==="
+          docker compose logs nginx --tail=100
+          echo "=== App Logs (last 100 lines) ==="
+          docker compose logs app --tail=100
+          echo "=== PostgreSQL Status ==="
+          docker compose ps postgres
+          echo "=== Redis Status ==="
+          docker compose ps redis
           exit 1
 
       - name: Cleanup
