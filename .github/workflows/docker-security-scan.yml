@@ -171,48 +171,71 @@ jobs:
           max_wait=60
           elapsed=0
           while [ $elapsed -lt $max_wait ]; do
-            healthy_count=$(docker compose ps --format json | jq -r '.[] | select(.Health == "healthy") | .Name' | wc -l)
-            total_count=$(docker compose ps --format json | jq -r '.[].Name' | wc -l)
-            
+            # healthyサービスをカウント（jqなし）
+            healthy_count=$(docker compose ps | grep -c "(healthy)" || echo "0")
+
             if [ "$healthy_count" -ge 3 ]; then
-              echo "✓ At least 3 services are healthy ($healthy_count/$total_count)"
+              echo "✓ At least 3 services are healthy ($healthy_count services)"
               break
             fi
-            
-            echo "Waiting for services to be healthy... ($healthy_count/$total_count healthy, ${elapsed}s elapsed)"
+
+            echo "Waiting for services to be healthy... ($healthy_count healthy, ${elapsed}s elapsed)"
             sleep 5
             elapsed=$((elapsed + 5))
           done
-          
+
           # 最終状態を表示
           echo "=== Final Status ==="
           docker compose ps
-          
+
+          # さらに5秒待機してから確認
+          echo "Waiting additional 5 seconds before testing..."
+          sleep 5
+
           # Nginxのヘルスチェックエンドポイントを確認（リトライ付き）
           echo "Testing /health endpoint..."
+          health_success=false
           for i in {1..5}; do
             if curl -f -s http://localhost/health; then
+              echo ""
               echo "✓ Health endpoint OK"
+              health_success=true
               break
             fi
-            echo "⚠ Attempt $i/5 failed, retrying..."
+            echo "⚠ Attempt $i/5 failed, retrying in 3s..."
             sleep 3
           done
-          
+
           # アプリケーションのルートを確認（リトライ付き）
           echo "Testing / endpoint..."
+          root_success=false
           for i in {1..5}; do
-            if curl -f -s http://localhost/ > /dev/null; then
-              echo "✓ Root endpoint OK"
-              exit 0
+            status_code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/)
+            if [ "$status_code" = "200" ]; then
+              echo "✓ Root endpoint OK (HTTP $status_code)"
+              root_success=true
+              break
             fi
-            echo "⚠ Attempt $i/5 failed, retrying..."
+            echo "⚠ Attempt $i/5 failed (HTTP $status_code), retrying in 3s..."
             sleep 3
           done
-          
-          # すべて失敗した場合、詳細なログを表示
-          echo "✗ Health check failed, showing logs..."
-          docker compose logs --tail=100
+
+          # 結果を確認
+          if [ "$health_success" = true ] && [ "$root_success" = true ]; then
+            echo ""
+            echo "✓ All health checks passed!"
+            exit 0
+          fi
+
+          # 失敗した場合、詳細なログを表示
+          echo ""
+          echo "✗ Health check failed"
+          echo "=== Container Status ==="
+          docker compose ps
+          echo "=== Nginx Logs ==="
+          docker compose logs nginx --tail=50
+          echo "=== App Logs ==="
+          docker compose logs app --tail=50
           exit 1
 
       - name: Cleanup
