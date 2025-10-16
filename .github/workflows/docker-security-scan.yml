@@ -120,48 +120,62 @@ jobs:
 
       - name: Build and test
         run: |
-          set -x  # デバッグモード: 実行されるコマンドを表示
+          # エラーハンドリング関数
+          handle_error() {
+            echo ""
+            echo "❌ Error occurred at: $1"
+            echo "==== Container Status ===="
+            docker compose ps || true
+            echo "==== All Logs ===="
+            docker compose logs --tail=50 || true
+            exit 1
+          }
 
           echo "==== STEP 1: Building Docker images ===="
-          if ! docker compose build; then
-            echo "❌ Docker build failed"
-            exit 1
+          if ! docker compose build 2>&1; then
+            handle_error "Docker build"
           fi
           echo "✓ Build completed"
 
           echo ""
           echo "==== STEP 2: Starting containers ===="
-          if ! docker compose up -d; then
-            echo "❌ Failed to start containers"
-            docker compose ps
-            exit 1
+          if ! docker compose up -d 2>&1; then
+            handle_error "Container startup"
           fi
           echo "✓ Containers started"
 
           echo ""
           echo "==== STEP 3: Waiting for dependencies ===="
-          # PostgreSQLとRedisのヘルスチェックを待つ
-          deps_ready=false
-          for i in {1..30}; do
-            postgres_healthy=$(docker compose ps postgres 2>/dev/null | grep -c "(healthy)" || echo "0")
-            redis_healthy=$(docker compose ps redis 2>/dev/null | grep -c "(healthy)" || echo "0")
+          # PostgreSQLとRedisが実際に接続可能になるまで待つ
 
-            if [ "$postgres_healthy" -ge 1 ] && [ "$redis_healthy" -ge 1 ]; then
-              echo "✓ Dependencies are ready (postgres: $postgres_healthy, redis: $redis_healthy)"
-              deps_ready=true
+          # PostgreSQLの接続を待つ
+          echo "Waiting for PostgreSQL..."
+          for i in {1..30}; do
+            if docker compose exec -T postgres pg_isready -U laravel 2>/dev/null | grep -q "accepting connections"; then
+              echo "✓ PostgreSQL is ready (attempt $i)"
               break
             fi
-            echo "Waiting for dependencies... ($i/30) [postgres: $postgres_healthy, redis: $redis_healthy]"
+            echo "  Waiting... ($i/30)"
             sleep 3
           done
 
-          if [ "$deps_ready" = "false" ]; then
-            echo "❌ Dependencies did not become healthy in time"
-            docker compose ps
-            docker compose logs postgres --tail=50
-            docker compose logs redis --tail=50
-            exit 1
-          fi
+          # Redisの接続を待つ
+          echo "Waiting for Redis..."
+          for i in {1..30}; do
+            if docker compose exec -T redis redis-cli ping 2>/dev/null | grep -q "PONG"; then
+              echo "✓ Redis is ready (attempt $i)"
+              break
+            fi
+            echo "  Waiting... ($i/30)"
+            sleep 3
+          done
+
+          # コンテナステータスを表示
+          echo ""
+          echo "Dependency status:"
+          docker compose ps postgres redis
+
+          echo "✓ Dependencies check completed"
 
           echo ""
           echo "==== STEP 4: Additional wait for app container ===="
@@ -258,7 +272,6 @@ jobs:
 
           echo ""
           echo "✓ Build and test completed successfully"
-          set +x  # デバッグモード終了
 
       - name: Check permissions
         run: |
