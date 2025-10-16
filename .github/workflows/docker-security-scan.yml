@@ -120,88 +120,145 @@ jobs:
 
       - name: Build and test
         run: |
-          echo "Building Docker images..."
-          docker compose build || { echo "Build failed"; exit 1; }
+          set -x  # デバッグモード: 実行されるコマンドを表示
 
-          echo "Starting containers..."
-          docker compose up -d || { echo "Failed to start containers"; exit 1; }
+          echo "==== STEP 1: Building Docker images ===="
+          if ! docker compose build; then
+            echo "❌ Docker build failed"
+            exit 1
+          fi
+          echo "✓ Build completed"
 
+          echo ""
+          echo "==== STEP 2: Starting containers ===="
+          if ! docker compose up -d; then
+            echo "❌ Failed to start containers"
+            docker compose ps
+            exit 1
+          fi
+          echo "✓ Containers started"
+
+          echo ""
+          echo "==== STEP 3: Waiting for dependencies ===="
           # PostgreSQLとRedisのヘルスチェックを待つ
-          echo "Waiting for database and cache to be ready..."
+          deps_ready=false
           for i in {1..30}; do
             postgres_healthy=$(docker compose ps postgres 2>/dev/null | grep -c "(healthy)" || echo "0")
             redis_healthy=$(docker compose ps redis 2>/dev/null | grep -c "(healthy)" || echo "0")
 
             if [ "$postgres_healthy" -ge 1 ] && [ "$redis_healthy" -ge 1 ]; then
-              echo "✓ Dependencies are ready"
+              echo "✓ Dependencies are ready (postgres: $postgres_healthy, redis: $redis_healthy)"
+              deps_ready=true
               break
             fi
             echo "Waiting for dependencies... ($i/30) [postgres: $postgres_healthy, redis: $redis_healthy]"
             sleep 3
           done
 
-          # 追加で10秒待機
-          sleep 10
+          if [ "$deps_ready" = "false" ]; then
+            echo "❌ Dependencies did not become healthy in time"
+            docker compose ps
+            docker compose logs postgres --tail=50
+            docker compose logs redis --tail=50
+            exit 1
+          fi
 
-          # コンテナの状態を確認
-          echo "=== Container Status ==="
+          echo ""
+          echo "==== STEP 4: Additional wait for app container ===="
+          sleep 10
+          echo "✓ Wait completed"
+
+          echo ""
+          echo "==== STEP 5: Container Status Check ===="
           docker compose ps
 
-          # APP_KEYを生成（リトライ機能付き）
-          echo "Generating application key..."
+          echo ""
+          echo "==== STEP 6: Generating APP_KEY ===="
           key_generated=false
           for i in {1..10}; do
-            output=$(docker compose exec -T app php artisan key:generate --force 2>&1 || echo "ERROR")
-            echo "$output"
-            if echo "$output" | grep -q "Application key set"; then
+            echo "Attempt $i/10..."
+            output=$(docker compose exec -T app php artisan key:generate --force 2>&1 || echo "EXEC_ERROR")
+
+            if echo "$output" | grep -q "EXEC_ERROR"; then
+              echo "❌ Could not execute command in container"
+              docker compose ps app
+              docker compose logs app --tail=20
+            elif echo "$output" | grep -q "Application key set"; then
               echo "✓ APP_KEY generated successfully"
+              echo "$output"
               key_generated=true
               break
+            else
+              echo "Output: $output"
             fi
-            echo "⚠ Attempt $i/10 failed, retrying in 3s..."
+
+            echo "Retrying in 3s..."
             sleep 3
           done
 
           if [ "$key_generated" = "false" ]; then
-            echo "✗ Failed to generate APP_KEY after 10 attempts"
-            echo "=== App Container Logs ==="
+            echo ""
+            echo "❌ Failed to generate APP_KEY after 10 attempts"
+            echo "==== Container Status ===="
+            docker compose ps
+            echo "==== App Container Logs ===="
             docker compose logs app --tail=100
+            echo "==== Postgres Logs ===="
+            docker compose logs postgres --tail=30
+            echo "==== Redis Logs ===="
+            docker compose logs redis --tail=30
             exit 1
           fi
 
-          # .envファイルにAPP_KEYが設定されたか確認
-          echo "Checking .env file..."
+          echo ""
+          echo "==== STEP 7: Verify .env file ===="
           if docker compose exec -T app grep "APP_KEY=" .env 2>/dev/null | head -1; then
             echo "✓ APP_KEY found in .env"
           else
             echo "⚠ Could not verify APP_KEY in .env (but continuing...)"
           fi
 
-          # コンテナを再起動して環境変数を反映
-          echo "Restarting containers to apply APP_KEY..."
+          echo ""
+          echo "==== STEP 8: Restarting containers ===="
           docker compose restart app nginx
+          echo "✓ Containers restarted"
 
-          # 再起動後、十分に待機
-          echo "Waiting for containers to restart..."
+          echo ""
+          echo "==== STEP 9: Wait for restart ===="
           sleep 20
+          echo "✓ Wait completed"
 
-          # ヘルスチェックが完了するまで待機
-          echo "Waiting for all services to be healthy..."
+          echo ""
+          echo "==== STEP 10: Health check verification ===="
+          all_healthy=false
           for i in {1..30}; do
             healthy_count=$(docker compose ps 2>/dev/null | grep -c "(healthy)" || echo "0")
+            total_count=$(docker compose ps --format json 2>/dev/null | wc -l || echo "0")
+
             if [ "$healthy_count" -ge 3 ]; then
-              echo "✓ At least 3 services are healthy!"
+              echo "✓ At least 3 services are healthy! ($healthy_count healthy)"
+              all_healthy=true
               break
             fi
-            echo "Waiting for health checks... ($healthy_count/5 healthy, attempt $i/30)"
+            echo "Waiting for health checks... ($healthy_count healthy, attempt $i/30)"
             sleep 5
           done
 
-          # 最終状態を表示
-          echo "=== Final Container Status ==="
+          if [ "$all_healthy" = "false" ]; then
+            echo "⚠ Not all services are healthy, but continuing..."
+          fi
+
+          echo ""
+          echo "==== STEP 11: Final Status ===="
           docker compose ps
-          echo "=== Recent Logs ==="
+
+          echo ""
+          echo "==== Recent Logs ===="
           docker compose logs --tail=30
+
+          echo ""
+          echo "✓ Build and test completed successfully"
+          set +x  # デバッグモード終了
 
       - name: Check permissions
         run: |
