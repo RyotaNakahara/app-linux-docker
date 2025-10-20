@@ -94,11 +94,11 @@ RUN addgroup -g 1000 laravel && \
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy application files first
-COPY --chown=laravel:laravel . .
+# Copy application files first (rootとしてコピー)
+COPY . .
 
 # Copy vendor from builder (if exists)
-COPY --from=builder --chown=laravel:laravel /var/www/html/vendor ./vendor
+COPY --from=builder /var/www/html/vendor ./vendor
 
 # Create necessary directories with proper permissions
 RUN mkdir -p \
@@ -107,7 +107,7 @@ RUN mkdir -p \
     storage/framework/views \
     storage/logs \
     bootstrap/cache \
-    && chown -R laravel:laravel storage bootstrap/cache \
+    && chown -R laravel:laravel . \
     && chmod -R 775 storage bootstrap/cache
 
 # Copy PHP configuration

@@ -90,7 +90,7 @@ jobs:
           cat > .env << 'EOF'
           APP_NAME=Laravel
           APP_ENV=local
-          APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          APP_KEY=base64:fAJyX4oXF+WgnLsG8C5CsXyHwWC79e62udpXPnRmjIk=
           APP_DEBUG=true
           APP_TIMEZONE=UTC
           APP_URL=http://localhost
