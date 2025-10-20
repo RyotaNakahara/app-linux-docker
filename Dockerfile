@@ -1,12 +1,12 @@
 # =============================================
-# Laravel Application Dockerfile
-# Non-root user, multi-stage build for security
+# Laravel アプリケーション Dockerfile
+# セキュリティ強化のため非rootユーザー、マルチステージビルドを使用
 # =============================================
 
-# Build stage
+# ビルドステージ
 FROM php:8.3-fpm-alpine AS builder
 
-# Install system dependencies
+# システム依存パッケージのインストール
 RUN apk add --no-cache \
     git \
     curl \
@@ -17,7 +17,7 @@ RUN apk add --no-cache \
     zip \
     unzip
 
-# Install PHP extensions
+# PHP拡張機能のインストール
 RUN docker-php-ext-install \
     pdo \
     pdo_pgsql \
@@ -29,33 +29,33 @@ RUN docker-php-ext-install \
     bcmath \
     gd
 
-# Install Redis extension
+# Redis拡張機能のインストール
 RUN apk add --no-cache pcre-dev ${PHPIZE_DEPS} \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apk del pcre-dev ${PHPIZE_DEPS}
 
-# Install Composer
+# Composerのインストール
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Set working directory
+# 作業ディレクトリの設定
 WORKDIR /var/www/html
 
-# Copy composer files first (for better layer caching)
+# Composerファイルを先にコピー（レイヤーキャッシュの最適化のため）
 COPY composer.json composer.lock* ./
 
-# Install PHP dependencies
-# Create vendor directory even if composer install is skipped
+# PHP依存パッケージのインストール
+# composer installがスキップされた場合でもvendorディレクトリを作成
 RUN mkdir -p vendor && \
     if [ -f composer.lock ]; then \
         composer install --no-dev --no-scripts --no-autoloader --prefer-dist; \
     fi
 
 # =============================================
-# Production stage
+# 本番ステージ
 FROM php:8.3-fpm-alpine
 
-# Install runtime dependencies only
+# 実行時の依存パッケージのみをインストール
 RUN apk add --no-cache \
     libpng \
     libzip \
@@ -64,7 +64,7 @@ RUN apk add --no-cache \
     fcgi \
     netcat-openbsd
 
-# Install PHP extensions (same as builder)
+# PHP拡張機能のインストール（ビルダーステージと同じ）
 RUN apk add --no-cache postgresql-dev libpng-dev libzip-dev oniguruma-dev \
     && docker-php-ext-install \
         pdo \
@@ -78,29 +78,29 @@ RUN apk add --no-cache postgresql-dev libpng-dev libzip-dev oniguruma-dev \
         gd \
     && apk del postgresql-dev libpng-dev libzip-dev oniguruma-dev
 
-# Install Redis extension
+# Redis拡張機能のインストール
 RUN apk add --no-cache pcre-dev ${PHPIZE_DEPS} \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apk del pcre-dev ${PHPIZE_DEPS}
 
-# Copy Composer from official image
+# 公式イメージからComposerをコピー
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Create non-root user (UID 1000, GID 1000)
+# 非rootユーザーの作成（UID 1000, GID 1000）
 RUN addgroup -g 1000 laravel && \
     adduser -D -u 1000 -G laravel laravel
 
-# Set working directory
+# 作業ディレクトリの設定
 WORKDIR /var/www/html
 
-# Copy application files first (rootとしてコピー)
+# アプリケーションファイルを先にコピー（rootとしてコピー）
 COPY . .
 
-# Copy vendor from builder (if exists)
+# ビルダーからvendorをコピー（存在する場合）
 COPY --from=builder /var/www/html/vendor ./vendor
 
-# Create necessary directories with proper permissions
+# 必要なディレクトリを作成し、適切な権限を設定
 RUN mkdir -p \
     storage/framework/cache \
     storage/framework/sessions \
@@ -110,23 +110,23 @@ RUN mkdir -p \
     && chown -R laravel:laravel . \
     && chmod -R 775 storage bootstrap/cache
 
-# Copy PHP configuration
+# PHP設定ファイルのコピー
 COPY docker/php/php.ini /usr/local/etc/php/conf.d/laravel.ini
 COPY docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
 
-# Copy health check script and make it executable
+# ヘルスチェックスクリプトをコピーし、実行権限を付与
 COPY docker/php/php-fpm-healthcheck /usr/local/bin/php-fpm-healthcheck
 RUN chmod +x /usr/local/bin/php-fpm-healthcheck
 
-# Switch to non-root user
+# 非rootユーザーに切り替え
 USER laravel
 
-# Expose port 9000 for PHP-FPM
+# PHP-FPM用のポート9000を公開
 EXPOSE 9000
 
-# Health check
+# ヘルスチェックの設定
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD php-fpm-healthcheck || exit 1
 
-# Start PHP-FPM
+# PHP-FPMを起動
 CMD ["php-fpm"]

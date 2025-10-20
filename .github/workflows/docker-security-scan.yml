@@ -133,11 +133,23 @@ jobs:
 
           echo ""
           echo "Fixing permissions after volume mount..."
-          docker compose exec -T --user root app sh -c "chown -R laravel:laravel /var/www/html && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache"
+          docker compose exec -T --user root app sh -c "
+            mkdir -p /var/www/html/storage/framework/cache/data \
+                     /var/www/html/storage/framework/sessions \
+                     /var/www/html/storage/framework/views \
+                     /var/www/html/storage/logs \
+                     /var/www/html/bootstrap/cache && \
+            chown -R laravel:laravel /var/www/html/storage /var/www/html/bootstrap/cache && \
+            chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+          "
 
           echo ""
-          echo "Waiting 60 seconds for all services to start..."
-          sleep 60
+          echo "Regenerating Composer autoload..."
+          docker compose exec -T app composer dump-autoload
+
+          echo ""
+          echo "Waiting 30 seconds for all services to stabilize..."
+          sleep 30
 
           echo ""
           echo "Container status:"
@@ -172,7 +184,16 @@ jobs:
 
           echo ""
           echo "Testing / endpoint..."
-          curl -f http://localhost/ || exit 1
+          if ! curl -f http://localhost/; then
+            echo "Error: Root endpoint returned an error"
+            echo ""
+            echo "=== Laravel Logs ==="
+            docker compose exec -T app cat /var/www/html/storage/logs/laravel.log || echo "No Laravel log file found"
+            echo ""
+            echo "=== PHP-FPM Logs ==="
+            docker compose logs app
+            exit 1
+          fi
 
           echo ""
           echo "Health checks passed"

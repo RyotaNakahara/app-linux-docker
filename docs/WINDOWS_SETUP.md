@@ -310,6 +310,136 @@ code app-linux-docker
 # ファイルを編集・保存すると自動的にLFになる
 ```
 
+## 🌐 カスタムドメインの設定
+
+`http://laravel-app.test/` でアクセスできるようにする方法です。
+
+### 方法1: スクリプトを使用（推奨）
+
+```powershell
+# PowerShellを管理者権限で開く
+cd "プロジェクトのパス"
+.\setup-hosts.ps1
+```
+
+### 方法2: 手動設定
+
+```powershell
+# 管理者権限のPowerShellで実行
+notepad C:\Windows\System32\drivers\etc\hosts
+```
+
+ファイルの最後に以下を追加：
+```
+127.0.0.1    laravel-app.test
+```
+
+DNSキャッシュをクリア：
+```powershell
+ipconfig /flushdns
+```
+
+### 他のドメイン名を使用する場合
+
+`docker/nginx/default.conf` の3行目を編集：
+```nginx
+server_name your-domain.test localhost;
+```
+
+hostsファイルに追加：
+```
+127.0.0.1    your-domain.test
+```
+
+コンテナを再起動：
+```powershell
+docker compose restart nginx
+```
+
+## 💻 Windows用コマンド一覧
+
+Makeが使えない場合、以下のDocker Composeコマンドを直接使用してください。
+
+### 基本コマンド
+
+```powershell
+# コンテナを起動
+docker compose up -d
+
+# コンテナを停止
+docker compose down
+
+# コンテナを再起動
+docker compose restart
+
+# コンテナの状態確認
+docker compose ps
+
+# ログを表示
+docker compose logs -f
+docker compose logs -f app  # 特定のサービス
+```
+
+### Artisan コマンド
+
+```powershell
+# マイグレーション
+docker compose exec app php artisan migrate
+
+# マイグレーション + シーディング
+docker compose exec app php artisan migrate --seed --force
+
+# キャッシュクリア
+docker compose exec app php artisan cache:clear
+docker compose exec app php artisan config:clear
+docker compose exec app php artisan route:clear
+docker compose exec app php artisan view:clear
+```
+
+### Composer
+
+```powershell
+# 依存関係のインストール
+docker compose exec app composer install --no-interaction --prefer-dist --optimize-autoloader
+
+# 依存関係の更新
+docker compose exec app composer update --no-interaction
+
+# パッケージの追加
+docker compose exec app composer require パッケージ名
+```
+
+### コンテナへのアクセス
+
+```powershell
+# 非rootユーザーでログイン
+docker compose exec app bash
+
+# rootユーザーでログイン
+docker compose exec -u root app bash
+```
+
+### PowerShell エイリアス設定（オプション）
+
+```powershell
+# PowerShellプロファイルを開く
+notepad $PROFILE
+
+# 以下を追加
+function dc-up { docker compose up -d }
+function dc-down { docker compose down }
+function dc-restart { docker compose restart }
+function dc-ps { docker compose ps }
+function dc-logs { docker compose logs -f @args }
+function art { docker compose exec app php artisan @args }
+```
+
+保存後、以下のように使用可能：
+```powershell
+dc-up           # docker compose up -d
+art migrate     # docker compose exec app php artisan migrate
+```
+
 ## 📞 サポート
 
 問題が解決しない場合は、以下の情報を含めてIssueを作成してください：

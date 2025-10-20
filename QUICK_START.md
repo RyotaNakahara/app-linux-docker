@@ -179,5 +179,8 @@ docker compose up -d
 
 ## 📚 詳細情報
 
-詳しいセットアップ手順は `README_SETUP.md` を参照してください。
+- **詳細なセットアップ**: [INSTALL.md](INSTALL.md)
+- **プロジェクト概要**: [README.md](README.md)
+- **パーミッション管理**: [PERMISSION_CHECK.md](PERMISSION_CHECK.md)
+- **Windows環境**: [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md)
 
