@@ -1,0 +1,272 @@
+# =============================================
+# Docker Compose 設定ファイル
+# Laravel + PostgreSQL + Redis + Mailhog + Nginx
+# =============================================
+
+# サービス定義: 各コンテナの設定
+services:
+
+  # =============================================
+  # Laravel Application (PHP-FPM)
+  # PHPアプリケーションを実行するコンテナ
+  # =============================================
+  app:
+    # ビルド設定: Dockerfileからイメージを作成
+    build:
+      context: .                    # ビルドコンテキスト（カレントディレクトリ）
+      dockerfile: Dockerfile         # 使用するDockerfile
+
+    container_name: laravel_app      # コンテナに付ける名前（識別しやすくする）
+
+    # 再起動ポリシー: コンテナが停止したら自動的に再起動
+    # unless-stopped = 手動で停止した場合を除いて常に再起動
+    restart: unless-stopped
+
+    # コンテナ内の作業ディレクトリ（デフォルトでここに移動）
+    working_dir: /var/www/html
+
+    # ボリュームマウント: ホストとコンテナ間でファイルを共有
+    volumes:
+      # ホストのカレントディレクトリをコンテナの/var/www/htmlにマウント
+      # これによりコード変更がリアルタイムで反映される
+      - ./:/var/www/html
+
+      # PHP設定ファイルをコンテナ内の設定ディレクトリにマウント
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/laravel.ini
+
+    # 環境変数: コンテナ内で使用される変数
+    # ${変数名:-デフォルト値} の形式で.envファイルから読み込み
+    environment:
+      # アプリケーション基本設定
+      - APP_NAME=${APP_NAME:-Laravel}
+      - APP_URL=${APP_URL:-http://laravel-app.test}
+      - APP_KEY=${APP_KEY:-}
+
+      # アプリケーション環境（local/production等）
+      - APP_ENV=${APP_ENV:-local}
+
+      # デバッグモード（trueにすると詳細エラーが表示される）
+      - APP_DEBUG=${APP_DEBUG:-true}
+
+      # データベース接続設定
+      - DB_CONNECTION=pgsql           # PostgreSQLを使用
+      - DB_HOST=postgres              # サービス名（Docker内部DNS）
+      - DB_PORT=5432                  # PostgreSQLのデフォルトポート
+      - DB_DATABASE=${DB_DATABASE:-laravel}
+      - DB_USERNAME=${DB_USERNAME:-laravel}
+      - DB_PASSWORD=${DB_PASSWORD:-secret}
+
+      # Redis接続設定（キャッシュ・セッション用）
+      - REDIS_HOST=redis              # サービス名
+      - REDIS_PORT=6379               # Redisのデフォルトポート
+
+      # メール設定（Mailhog使用）
+      - MAIL_MAILER=smtp              # SMTP方式
+      - MAIL_HOST=mailhog             # サービス名
+      - MAIL_PORT=1025                # MailhogのSMTPポート
+      - MAIL_USERNAME=null            # 認証不要
+      - MAIL_PASSWORD=null
+      - MAIL_ENCRYPTION=null          # 暗号化なし（開発用）
+
+    # 依存関係: このサービスが起動する前に必要なサービス
+    depends_on:
+      postgres:
+        # service_healthy = ヘルスチェックが成功してから起動
+        # データベースの準備が完了してからアプリを起動する
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    # ネットワーク: このサービスが所属するネットワーク
+    # 同じネットワーク内のサービスは相互に通信可能
+    networks:
+      - laravel_network
+
+    # セキュリティオプション
+    security_opt:
+      # コンテナ内のプロセスが新しい特権を取得できないようにする
+      # セキュリティ強化のため
+      - no-new-privileges:true
+
+    # ファイルシステムを読み取り専用にするか
+    # false = 書き込み可能（Laravelはログやキャッシュを書き込む必要がある）
+    read_only: false
+
+    # tmpfs: メモリ上に一時ファイルシステムを作成
+    # /tmpディレクトリを100MBのメモリ上に作成（高速）
+    tmpfs:
+      - /tmp:size=100M,mode=1777      # mode=1777 = 全ユーザーが読み書き可能
+
+  # =============================================
+  # Nginx Web Server
+  # HTTPリクエストを受け取り、PHP-FPMに転送
+  # =============================================
+  nginx:
+    # 公式のNginxイメージを使用（Alpineベースで軽量）
+    image: nginx:1.25-alpine
+
+    container_name: laravel_nginx
+    restart: unless-stopped
+
+    # ポートマッピング: ホスト側のポートをコンテナ側のポートに接続
+    ports:
+      # ホストの80番ポート（または.envのAPP_PORT）をコンテナの80番ポートにマッピング
+      # 例: http://localhost でアクセス可能になる
+      - "${APP_PORT:-80}:80"
+
+    volumes:
+      # :ro = read-only（読み取り専用）でマウント
+      # Nginxはファイルを読むだけで書き込まないため
+      - ./:/var/www/html:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+    # appサービスが起動してから起動する
+    depends_on:
+      - app
+
+    networks:
+      - laravel_network
+
+    security_opt:
+      - no-new-privileges:true
+
+    # ヘルスチェック: コンテナが正常に動作しているか定期的に確認
+    healthcheck:
+      # /healthエンドポイントにアクセスして確認（IPv4アドレスを明示的に指定）
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 30s                   # 30秒ごとにチェック
+      timeout: 3s                     # 3秒以内に応答がなければ失敗
+      retries: 3                      # 3回連続で失敗したら異常と判断
+
+  # =============================================
+  # PostgreSQL Database
+  # データベースサーバー
+  # =============================================
+  postgres:
+    # PostgreSQL 16のAlpineベースイメージ
+    image: postgres:16-alpine
+
+    container_name: laravel_postgres
+    restart: unless-stopped
+
+    # PostgreSQL専用の環境変数
+    environment:
+      - POSTGRES_DB=${DB_DATABASE:-laravel}       # 作成するデータベース名
+      - POSTGRES_USER=${DB_USERNAME:-laravel}     # データベースユーザー名
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-secret}  # データベースパスワード
+      - PGDATA=/var/lib/postgresql/data/pgdata    # データの保存場所
+
+    volumes:
+      # 名前付きボリューム（postgres_data）を使用
+      # コンテナを削除してもデータが永続化される
+      - postgres_data:/var/lib/postgresql/data
+
+    ports:
+      # ホストからも直接アクセスできるようにポートを公開
+      # 例: pgAdminなどのGUIツールから接続可能
+      - "${DB_PORT:-5432}:5432"
+
+    networks:
+      - laravel_network
+
+    security_opt:
+      - no-new-privileges:true
+
+    # PostgreSQLのヘルスチェック
+    healthcheck:
+      # pg_isready = PostgreSQLが接続を受け付けられる状態かチェック
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-laravel}"]
+      interval: 10s                   # 10秒ごとにチェック
+      timeout: 5s                     # 5秒以内に応答
+      retries: 5                      # 5回連続で失敗したら異常
+
+  # =============================================
+  # Redis Cache & Session Store
+  # キャッシュとセッションの保存に使用
+  # =============================================
+  redis:
+    # Redis 7のAlpineベースイメージ
+    image: redis:7-alpine
+
+    container_name: laravel_redis
+    restart: unless-stopped
+
+    # Redisサーバーの起動コマンド
+    # --appendonly yes = AOF永続化を有効化（データが失われにくい）
+    # パスワードなしで起動（開発環境用）
+    command: redis-server --appendonly yes
+
+    volumes:
+      # Redisのデータを永続化
+      - redis_data:/data
+
+    ports:
+      # ホストから直接アクセス可能にする
+      # 例: RedisInsightなどのGUIツールから接続可能
+      - "${REDIS_PORT:-6379}:6379"
+
+    networks:
+      - laravel_network
+
+    security_opt:
+      - no-new-privileges:true
+
+    # Redisのヘルスチェック
+    healthcheck:
+      # redis-cli ping = Redisが応答するかチェック（正常なら "PONG" が返る）
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # =============================================
+  # Mailhog (Mail Testing Tool)
+  # 開発環境用のメールキャプチャツール
+  # 送信されたメールを実際に送らずにWeb UIで確認できる
+  # =============================================
+  mailhog:
+    image: mailhog/mailhog:latest
+
+    container_name: laravel_mailhog
+    restart: unless-stopped
+
+    ports:
+      # SMTPポート: アプリケーションからのメール送信を受け取る
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"
+
+      # Web UIポート: ブラウザで http://localhost:8025 にアクセスして
+      # 送信されたメールを確認できる
+      - "${MAILHOG_WEB_PORT:-8025}:8025"
+
+    networks:
+      - laravel_network
+
+    security_opt:
+      - no-new-privileges:true
+
+# =============================================
+# ネットワーク定義
+# サービス間の通信を可能にする仮想ネットワーク
+# =============================================
+networks:
+  laravel_network:
+    # bridge = デフォルトのネットワークドライバー
+    # 同じネットワーク内のコンテナはサービス名で通信可能
+    # 例: appコンテナから "postgres" でデータベースに接続できる
+    driver: bridge
+
+# =============================================
+# ボリューム定義
+# データを永続化するための名前付きボリューム
+# =============================================
+volumes:
+  # PostgreSQLのデータを保存
+  # コンテナを削除してもデータベースの内容は保持される
+  postgres_data:
+    driver: local                     # ローカルディスクに保存
+
+  # Redisのデータを保存
+  redis_data:
+    driver: local
+

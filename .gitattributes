@@ -1,0 +1,62 @@
+# Git 改行コード設定
+# Windowsでも正しい改行コードでファイルを管理するための設定
+
+# デフォルト: テキストファイルは自動判定
+* text=auto
+
+# シェルスクリプト: 必ずLF（Linux形式）
+*.sh text eol=lf
+
+# Docker関連: 必ずLF
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+docker-compose*.yml text eol=lf
+
+# PHP: LF推奨（Laravel/PHPの標準）
+*.php text eol=lf
+
+# 設定ファイル: 必ずLF
+*.conf text eol=lf
+*.ini text eol=lf
+.editorconfig text eol=lf
+Makefile text eol=lf
+
+# YAML: 必ずLF
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# JSON: 必ずLF
+*.json text eol=lf
+
+# Markdown: 必ずLF
+*.md text eol=lf
+
+# 実行可能ファイル（シェルスクリプト等）: 必ずLF
+php-fpm-healthcheck text eol=lf
+
+# バイナリファイル: 変換しない
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mov binary
+*.mp4 binary
+*.mp3 binary
+*.flv binary
+*.fla binary
+*.swf binary
+*.gz binary
+*.zip binary
+*.7z binary
+*.ttf binary
+*.eot binary
+*.woff binary
+*.woff2 binary
+*.pyc binary
+*.pdf binary
+
+# Git設定
+.gitattributes text eol=lf
+.gitignore text eol=lf
+

@@ -1,0 +1,204 @@
+name: Docker Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # 毎週月曜日の午前2時（UTC）に実行
+    - cron: '0 2 * * 1'
+
+jobs:
+  trivy-scan:
+    name: Trivy Security Scan
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          tags: laravel-app:${{ github.sha }}
+          push: false
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'laravel-app:${{ github.sha }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy vulnerability scanner (table format)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'laravel-app:${{ github.sha }}'
+          format: 'table'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '0'  # 脆弱性があっても失敗しない（警告のみ）
+
+  docker-lint:
+    name: Dockerfile Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: error  # warningは無視してerrorのみ失敗させる
+
+  # docker-build-test:
+  #   name: Docker Build Test
+  #   runs-on: ubuntu-latest
+
+  #   env:
+  #     # 環境変数として設定
+  #     COMPOSE_INTERACTIVE_NO_CLI: 1
+
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+
+  #     - name: Create .env file
+  #       run: |
+  #         cat > .env << 'EOF'
+  #         APP_NAME=Laravel
+  #         APP_ENV=local
+  #         APP_KEY=base64:fAJyX4oXF+WgnLsG8C5CsXyHwWC79e62udpXPnRmjIk=
+  #         APP_DEBUG=true
+  #         APP_TIMEZONE=UTC
+  #         APP_URL=http://localhost
+
+  #         DB_CONNECTION=pgsql
+  #         DB_HOST=postgres
+  #         DB_PORT=5432
+  #         DB_DATABASE=laravel
+  #         DB_USERNAME=laravel
+  #         DB_PASSWORD=secret
+
+  #         REDIS_HOST=redis
+  #         REDIS_PORT=6379
+  #         REDIS_PASSWORD=
+
+  #         SESSION_DRIVER=file
+  #         CACHE_STORE=file
+
+  #         MAIL_MAILER=smtp
+  #         MAIL_HOST=mailhog
+  #         MAIL_PORT=1025
+  #         MAIL_USERNAME=null
+  #         MAIL_PASSWORD=null
+  #         MAIL_ENCRYPTION=null
+  #         MAIL_FROM_ADDRESS=hello@example.com
+  #         MAIL_FROM_NAME=Laravel
+  #         EOF
+
+  #         echo "✓ .env file created"
+  #         cat .env
+
+  #     - name: Build and test
+  #       run: |
+  #         echo "Building Docker image..."
+  #         docker compose build app
+
+  #         echo ""
+  #         echo "Starting containers..."
+  #         docker compose up -d
+
+  #         echo ""
+  #         echo "Fixing permissions after volume mount..."
+  #         docker compose exec -T --user root app sh -c "
+  #           mkdir -p /var/www/html/storage/framework/cache/data \
+  #                    /var/www/html/storage/framework/sessions \
+  #                    /var/www/html/storage/framework/views \
+  #                    /var/www/html/storage/logs \
+  #                    /var/www/html/bootstrap/cache && \
+  #           chown -R laravel:laravel /var/www/html/storage /var/www/html/bootstrap/cache && \
+  #           chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+  #         "
+
+  #         echo ""
+  #         echo "Regenerating Composer autoload..."
+  #         docker compose exec -T app composer dump-autoload
+
+  #         echo ""
+  #         echo "Waiting 30 seconds for all services to stabilize..."
+  #         sleep 30
+
+  #         echo ""
+  #         echo "Container status:"
+  #         docker compose ps
+
+  #         echo ""
+  #         echo "Logs:"
+  #         docker compose logs --tail=50
+
+  #         echo ""
+  #         echo "Build and test completed"
+
+  #     - name: Check permissions
+  #       run: |
+  #         echo "Checking user..."
+  #         docker compose exec -T app id
+
+  #         echo ""
+  #         echo "Checking storage permissions..."
+  #         docker compose exec -T app ls -la /var/www/html/storage
+
+  #         echo ""
+  #         echo "Testing write access..."
+  #         docker compose exec -T app sh -c "echo test > /var/www/html/storage/logs/test.txt && rm /var/www/html/storage/logs/test.txt && echo OK"
+
+  #         echo "Permissions OK"
+
+  #     - name: Check app health
+  #       run: |
+  #         echo "Testing /health endpoint..."
+  #         curl -f http://localhost/health || exit 1
+
+  #         echo ""
+  #         echo "Testing / endpoint..."
+  #         if ! curl -f http://localhost/; then
+  #           echo "Error: Root endpoint returned an error"
+  #           echo ""
+  #           echo "=== Laravel Logs ==="
+  #           docker compose exec -T app cat /var/www/html/storage/logs/laravel.log || echo "No Laravel log file found"
+  #           echo ""
+  #           echo "=== PHP-FPM Logs ==="
+  #           docker compose logs app
+  #           exit 1
+  #         fi
+
+  #         echo ""
+  #         echo "Health checks passed"
+
+  #     - name: Cleanup
+  #       if: always()
+  #       run: docker compose down -v
+

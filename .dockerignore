@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+
+# Documentation
+*.md
+LICENSE
+docs/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Testing
+tests/
+phpunit.xml
+.phpunit.result.cache
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build artifacts
+/public/hot
+/public/storage
+/storage/*.key
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Temporary files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Dependencies (will be installed during build)
+/vendor
+composer.lock
+
+# Development tools
+Makefile
+docker-compose.yml
+docker-compose.*.yml
