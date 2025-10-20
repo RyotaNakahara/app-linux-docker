@@ -132,6 +132,10 @@ jobs:
           docker compose up -d
 
           echo ""
+          echo "Fixing permissions after volume mount..."
+          docker compose exec -T --user root app sh -c "chown -R laravel:laravel /var/www/html && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache"
+
+          echo ""
           echo "Waiting 60 seconds for all services to start..."
           sleep 60
 
